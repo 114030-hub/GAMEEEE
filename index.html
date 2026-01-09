@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>Untitled</title>
+    
+
+  </head>
+    
+  <body>
+  <!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>郭熙《早春圖》冒險遊戲</title>
+
+<style>
+body {
+    margin: 0;
+    background: #e8dfc4;
+    overflow: hidden;
+    font-family: "楷體", "STKaiti", serif;
+    touch-action: none;
+}
+
+#ui-overlay {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 15px;
+    border: 2px solid #5d4a37;
+    border-radius: 5px;
+    z-index: 10;
+}
+
+.status { font-size: 18px; }
+.hint { font-size: 14px; color: #555; }
+
+canvas {
+    display: block;
+    background: linear-gradient(to bottom, #f4ecd8 0%, #dcd2b6 100%);
+}
+
+/* 手機操作按鈕 */
+#mobile-controls {
+    position: absolute;
+    bottom: 20px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 20;
+}
+
+#mobile-controls button {
+    width: 70px;
+    height: 70px;
+    font-size: 26px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.75);
+    border: 2px solid #5d4a37;
+    font-family: "楷體", serif;
+}
+
+/* 桌機隱藏 */
+@media (min-width: 900px) {
+    #mobile-controls {
+        display: none;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div id="ui-overlay">
+    <div class="status">畫境生機：<span id="score">0</span>%</div>
+    <div class="status" id="goal-text">目標：攀登至頂峰殿堂</div>
+    <div class="hint">← → 移動｜跳躍</div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- 手機按鈕 -->
+<div id="mobile-controls">
+    <button id="btn-left">←</button>
+    <button id="btn-jump">跳</button>
+    <button id="btn-right">→</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+document.body.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+const gravity = 0.6;
+const friction = 0.8;
+let score = 0;
+
+const player = {
+    x: 100,
+    y: canvas.height - 100,
+    width: 30,
+    height: 30,
+    vx: 0,
+    vy: 0,
+    jumping: false,
+    color: "#a62c2b"
+};
+
+const platforms = [
+    { x: 0, y: () => canvas.height - 40, w: () => canvas.width, h: 40 },
+    { x: 200, y: () => canvas.height - 150, w: 150, h: 20 },
+    { x: 450, y: () => canvas.height - 280, w: 200, h: 20 },
+    { x: 250, y: () => canvas.height - 420, w: 150, h: 20 },
+    { x: canvas.width - 250, y: 150, w: 200, h: 30, goal: true }
+];
+
+const hazards = [
+    { x: 400, size: 60 },
+    { x: 700, size: 80 }
+];
+
+let vitalityPoints = [
+    { x: 260, y: () => canvas.height - 180, collected: false },
+    { x: 480, y: () => canvas.height - 310, collected: false },
+    { x: 300, y: () => canvas.height - 450, collected: false }
+];
+
+const keys = {};
+
+// 鍵盤
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// 觸控按鈕
+function bind(btn, key) {
+    btn.addEventListener('touchstart', e => {
+        e.preventDefault();
+        keys[key] = true;
+    });
+    btn.addEventListener('touchend', e => {
+        e.preventDefault();
+        keys[key] = false;
+    });
+}
+
+bind(btnLeft = document.getElementById('btn-left'), 'ArrowLeft');
+bind(btnRight = document.getElementById('btn-right'), 'ArrowRight');
+
+document.getElementById('btn-jump').addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (!player.jumping) {
+        player.vy = -15;
+        player.jumping = true;
+    }
+});
+
+function drawPlayer() {
+    ctx.fillStyle = player.color;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "rgba(166,44,43,0.5)";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+    ctx.shadowBlur = 0;
+}
+
+function drawPlatforms() {
+    platforms.forEach(p => {
+        const py = typeof p.y === "function" ? p.y() : p.y;
+        const pw = typeof p.w === "function" ? p.w() : p.w;
+        ctx.fillStyle = p.goal ? "#5d4a37" : "#2c2c2c";
+        ctx.fillRect(p.x, py, pw, p.h);
+    });
+}
+
+function drawVitality() {
+    vitalityPoints.forEach(v => {
+        if (!v.collected) {
+            ctx.fillStyle = "#4a7c59";
+            ctx.beginPath();
+            ctx.arc(v.x, v.y(), 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+}
+
+function update() {
+    if (keys['ArrowLeft']) player.vx -= 0.8;
+    if (keys['ArrowRight']) player.vx += 0.8;
+    if (keys['Space'] && !player.jumping) {
+        player.vy = -15;
+        player.jumping = true;
+    }
+
+    player.vy += gravity;
+    player.x += player.vx;
+    player.y += player.vy;
+    player.vx *= friction;
+
+    if (player.y > canvas.height - player.height) {
+        player.y = canvas.height - player.height;
+        player.vy = 0;
+        player.jumping = false;
+    }
+
+    platforms.forEach(p => {
+        const py = typeof p.y === "function" ? p.y() : p.y;
+        const pw = typeof p.w === "function" ? p.w() : p.w;
+
+        if (player.x < p.x + pw &&
+            player.x + player.width > p.x &&
+            player.y + player.height > py &&
+            player.y + player.height < py + p.h + player.vy) {
+
+            if (p.goal && score >= 100) {
+                alert("恭喜！抵達頂峰殿堂！");
+                resetGame();
+            }
+
+            player.y = py - player.height;
+            player.vy = 0;
+            player.jumping = false;
+        }
+    });
+
+    vitalityPoints.forEach(v => {
+        if (!v.collected && Math.hypot(player.x - v.x, player.y - v.y()) < 30) {
+            v.collected = true;
+            score += 25;
+            scoreEl.innerText = score;
+        }
+    });
+}
+
+function resetGame() {
+    player.x = 100;
+    player.y = canvas.height - 100;
+    score = 0;
+    scoreEl.innerText = score;
+    vitalityPoints.forEach(v => v.collected = false);
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawPlatforms();
+    drawVitality();
+    drawPlayer();
+    update();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
+    
+  </body>
+  
+</html>
